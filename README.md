@@ -1,7 +1,5 @@
-# my base model
-This is the model I edit whenever I want to test a new architecture idea I have. It's designed to be flexible with many large architecture changes being tweakable from the config, easy to demonstrate what's happening in terms of the progression of tensor shapes, and easy to read/edit the code. The default config values are most similar to [minLlama3](https://github.com/evintunador/minLlama3) but include options for tweaks from other models such as the post-attention and post-MLP norm from [minGrok](https://github.com/evintunador/minGrok). Feel free to toy around and build off of it
-
-Notice that even though the models we're training here are very small (0.5m to 5m parameters), they are actually reasonable proxies for how well a scaled up version may do on real text data because of our use of the [TinyStories](https://arxiv.org/abs/2305.07759) dataset. Basically, because this dataset is so high quality and narrow in scope, these tiny models actually have a fighting chance of picking up on real linguistic relationships. Somewhere in the 1 to 3m parameter range, a GPT2-inspired architecture is capable of understanding relationships like how the token 'apple' is something that the main character of the tiny story 'Tim' would like to 'eat'; it can actually pick up on the relationships in this text which are an isomorphic subset of the ones that an actual LLM would see when training on the entire internet. When the TinyStories paper came out it was big news for researchers with limited compute; this basic idea is the backbone behind microsoft's Phi family of models, originally described in the paper [Textbooks Are All You Need](https://arxiv.org/pdf/2306.11644). I hope this repo can be of help to anyone who wants to get into designing & building novel architectures but doesn't have the compute to test a larger model; i'm literally training these on the CPU of a 2019 iMac with 8gb of ram (running linux mint so that ram is actually available to be fair).
+# Multi-Fractal Head Attention
+This is my first branching-off from my new [base model]() repo meant mainly as a test since i don't expect this idea to perform that well. In it i'll be saying fuck it to efficiency and giving each attention block heads of a variety of sizes
 
 # File Structure
 - `inference.ipynb`: open this notebook if you just want to load a model and perform inference
@@ -37,41 +35,8 @@ Notice that even though the models we're training here are very small (0.5m to 5
 Other than the below TODO lists, appreciated contributions include bug fixes, adding more verbose comment explanations of what the code is doing, general readability edits, efficiency edits, taking better advantage of the `LoggingModule`, etc. Because I'm not super knowledgeable on how collaborating on git projects works and I tend to edit directly on the main branch, please reach out and communicate with me about any edits you plan to make so that I can avoid editing the same files. [Click here to join my discord server](https://discord.gg/hTYQyDPpr9)
 
 # definite TODOs
-- [x] setup to use TinyStories dataset by default
-- [x] rewrite `tokenizer.py` with features like bos, eos and padding
-- [x] record loss values more permanently & setup a way to compare loss curves between models
-- [x] add options for different learning rate schedules
-- [x] periodically save model checkpoints
-- [x] add a loss mask to prevent from training on the padding tokens
-- [x] rebuild the tokenizer to use more complicated pairing rules
-    - [x] build tokenization models with larger vocabulary sizes
-- [x] build a simple notebook for comparison bw diff ppl graphs & model outputs
-- [ ] rearrange file structure such that every future experiment i do can be a submodule git repo. this outermost repo should only include the base model and all shared files
-- [ ] create a hyperparameter search loop that knows to cancel a run if it's going over your available vram usage
-- [ ] fix & enable batched inference
-    - [ ] update `model_evaluation.ipynb`'s teacher-forcing topk analysis to get more accurate %'s using batches
-
-# potential future TODOs
-- [ ] setup .py files to be runnable in terminal rather than in the .ipynb files
-- [ ] make tokenizer & function that turns list of token indices into tensors more efficient
-- [ ] add option to continually train pre-existing models & update its training data/hyperparameters accordingly
-- [ ] add automated model comparison analysis by GPT4 like in the [TinyStories](https://arxiv.org/abs/2305.07759) paper
-- [ ] add an option to use a pre-built tokenizer from huggingface like GPT2's
-- [ ] add sparse/local attention mask options
-- [ ] make training parallelizable over multiple GPUs with fairscale
-- [ ] build an easy way to design blocks in residual networks using lists of strings in the config. for example, the parallel MoE from [Snowflake](https://www.snowflake.com/en/) would be
-```Python
-[
-'Norm->Attn->+->Norm->MLP->+',
-'Norm->MoE->+'
-]
-```
-- [ ] different architectures/modules to incorporate
-    - [ ] cross-attention as a standalone module bc idk maybe it'll be useful at some point
-    - [ ] [Mixture of Experts]()
-    - [ ] [DiffuSeq](https://arxiv.org/abs/2210.08933)
-    - [ ] whatever these new RNN-like transformers have going on such as [Gemma 1.1](https://arxiv.org/abs/2402.19427) or [Megawhatever]()
-    - [ ] [Mamba](https://arxiv.org/abs/2312.00752)
+- [ ] add mult-fractal head attention module to `model_code/modules/attentions.py`
+- [ ] train model & compare
 
 # check me out
 - guides on how to build miniature versions of popular models from scratch: [minGemma](https://github.com/evintunador/minGemma), [minGrok](https://github.com/evintunador/minGrok), and [minLlama3](https://github.com/evintunador/minLlama3)
