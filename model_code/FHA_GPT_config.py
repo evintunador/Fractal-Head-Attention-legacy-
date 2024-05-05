@@ -26,8 +26,7 @@ class ModelConfig:
     mlp_gated: bool = True # Turns GeLU into GeGLU, giving you 50% more MLP parameters to train but also more expressiveness
 
     # attention
-    num_q_heads: int = 4 # `num_q_heads % num_kv_heads == 0` must be true
-    num_kv_heads: int = 1 # set =num_q_heads to revert to regular multi-head attention (not recommended)
+    num_heads: int = 4 # `num_q_heads % num_kv_heads == 0` must be true
     head_dim: int = 16 # most common choices are 32, 64 and especially 128 bc those are what works with FlashAttention
     theta: float = 10_000 # 10_000 is the most common choice. Llama3 uses 50_000
     max_seq_len: int = 256 # 512 is the most my 8gb of ram can handle

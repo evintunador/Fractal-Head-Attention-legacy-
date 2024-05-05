@@ -13,25 +13,23 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
 
-class MQSA(LoggingModule): # multi-head self-attention
+class FHA(LoggingModule):
     def __init__(self, cfg):
         super().__init__()
-        self.num_q_heads = cfg.num_q_heads
-        self.num_kv_heads = cfg.num_q_heads if cfg.num_kv_heads is None else cfg.num_kv_heads
-        assert cfg.num_q_heads % cfg.num_kv_heads == 0, f'num_q_heads must be divisible by num_kv_heads'
-        self.head_dim = cfg.dim // cfg.num_q_heads if cfg.head_dim is None else cfg.head_dim
+        self.num_heads = cfg.num_heads
+        self.head_dim = cfg.dim // cfg.num_heads if cfg.head_dim is None else cfg.head_dim
         self.dropout_rate = cfg.dropout_rate
 
-        self.Wq = nn.Linear(cfg.dim, cfg.num_q_heads * self.head_dim, bias=False)
-        self.Wk = nn.Linear(cfg.dim, self.num_kv_heads * self.head_dim, bias=False)
-        self.Wv = nn.Linear(cfg.dim, self.num_kv_heads * self.head_dim, bias=False)
-        self.Wo = nn.Linear(cfg.num_q_heads * self.head_dim, cfg.dim, bias=False)
+        self.Wq = nn.Linear(cfg.dim, cfg.num_heads * self.head_dim, bias=False)
+        self.Wk = nn.Linear(cfg.dim, self.num_heads * self.head_dim, bias=False)
+        self.Wv = nn.Linear(cfg.dim, self.num_heads * self.head_dim, bias=False)
+        self.Wo = nn.Linear(cfg.num_heads * self.head_dim, cfg.dim, bias=False)
 
         self.cache_k = torch.zeros(
-            (cfg.max_batch_size, cfg.max_seq_len, self.num_kv_heads, self.head_dim),
+            (cfg.max_batch_size, cfg.max_seq_len, self.num_heads, self.head_dim),
             requires_grad = False).to(cfg.device)
         self.cache_v = torch.zeros(
-            (cfg.max_batch_size, cfg.max_seq_len, self.num_kv_heads, self.head_dim),
+            (cfg.max_batch_size, cfg.max_seq_len, self.num_heads, self.head_dim),
             requires_grad = False).to(cfg.device)
     
     @log_io
@@ -46,9 +44,9 @@ class MQSA(LoggingModule): # multi-head self-attention
         batch_size, seq_len, _ = x.shape
         xq, xk, xv = self.Wq(x), self.Wk(x), self.Wv(x)
 
-        xq = xq.view(batch_size, seq_len, self.num_q_heads, self.head_dim)
-        xk = xk.view(batch_size, seq_len, self.num_kv_heads, self.head_dim)
-        xv = xv.view(batch_size, seq_len, self.num_kv_heads, self.head_dim)
+        xq = xq.view(batch_size, seq_len, self.num_heads, self.head_dim)
+        xk = xk.view(batch_size, seq_len, self.num_heads, self.head_dim)
+        xv = xv.view(batch_size, seq_len, self.num_heads, self.head_dim)
 
         xq, xk = self.apply_rotary_emb(xq, xk, freqs_cis)
 
@@ -66,17 +64,13 @@ class MQSA(LoggingModule): # multi-head self-attention
             keys, values = xk, xv
         queries = xq # for sake of keeping the naming scheme consistent
 
-        # adjusts keys and values to match the query heads count.
-        if self.num_kv_heads != self.num_q_heads:
-            keys, values = self.match_headcount(keys, values) # (batch_sizes, cache_len + seq_len, num_q_heads, head_dim)
-
-        queries = queries.transpose(1, 2)  # (bs, num_q_heads, seq_len, head_dim)
-        keys = keys.transpose(1, 2)  # (bs, num_q_heads, cache_len + seq_len, head_dim)
-        values = values.transpose(1, 2)  # (bs, num_q_heads, cache_len + seq_len, head_dim)
+        queries = queries.transpose(1, 2)  # (bs, num_heads, seq_len, head_dim)
+        keys = keys.transpose(1, 2)  # (bs, num_heads, cache_len + seq_len, head_dim)
+        values = values.transpose(1, 2)  # (bs, num_heads, cache_len + seq_len, head_dim)
         
         logits = self.attend(queries, keys, training)
         if mask is not None:
-            logits = logits + mask  # (bs, num_q_heads, seq_len, cache_len + seq_len)
+            logits = logits + mask  # (bs, num_heads, seq_len, cache_len + seq_len)
         scores = self.calc_output(logits, values, training) 
         
         output = self.Wo(scores)
@@ -111,16 +105,6 @@ class MQSA(LoggingModule): # multi-head self-attention
         return freqs_cis.view(*shape)
 
     @log_io
-    def match_headcount(
-        self, 
-        keys: torch.Tensor, 
-        values: torch.Tensor
-    ) -> (torch.Tensor, torch.Tensor):
-        keys = torch.repeat_interleave(keys, self.num_q_heads // self.num_kv_heads, dim=2)
-        values = torch.repeat_interleave(values, self.num_q_heads // self.num_kv_heads, dim=2)
-        return keys, values
-
-    @log_io
     def attend(
         self, 
         queries: 
@@ -133,13 +117,12 @@ class MQSA(LoggingModule): # multi-head self-attention
     @log_io
     def calc_output(
         self, 
-        logits: 
-        torch.Tensor, 
+        logits: torch.Tensor, 
         values: torch.Tensor, 
         training: bool
     ) -> torch.Tensor:
         batch_size, _, seq_len, _ = logits.shape
         scores = F.softmax(logits, dim=-1)
         if training: scores = F.dropout(scores, self.dropout_rate)
-        output = scores @ values # [batch_size, n_heads, seq_len, head_dim]
-        return output.transpose(1, 2).contiguous().view(batch_size, seq_len, -1) # [batch_size, seq_len, n_heads * head_dim]
+        output = scores @ values # [batch_size, num_heads, seq_len, head_dim]
+        return output.transpose(1, 2).contiguous().view(batch_size, seq_len, -1) # [batch_size, seq_len, num_heads * head_dim]
